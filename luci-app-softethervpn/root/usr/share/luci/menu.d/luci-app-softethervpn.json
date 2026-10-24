@@ -33,7 +33,7 @@
 	},
 
 	"admin/vpn/softethervpn/hubs": {
-		"title": "Virtual Hubs",
+		"title": "虚拟 HUB",
 		"order": 20,
 		"action": {
 			"type": "view",
