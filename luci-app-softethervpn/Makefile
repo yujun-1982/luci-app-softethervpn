@@ -8,7 +8,7 @@ PKG_LICENSE:=MIT
 PKG_MAINTAINER:=OpenWrt LuCI community
 
 LUCI_TITLE:=LuCI support for the SoftEther VPN Server
-LUCI_DESCRIPTION:=Web control panel for softethervpn5-server: service state, virtual HUBs, users, listeners and logs.
+LUCI_DESCRIPTION:=Minimal LuCI service control for softethervpn5-server: status, start, stop, restart and boot autostart.
 LUCI_DEPENDS:=+luci-base +rpcd +jshn +kmod-tun +softethervpn5-server
 LUCI_PKGARCH:=all
 
@@ -29,6 +29,8 @@ chmod 0644 "$${ROOT}/usr/libexec/softethervpn/common.sh" 2>/dev/null
 chmod 0755 "$${ROOT}/etc/uci-defaults/90-luci-app-softethervpn" 2>/dev/null
 mkdir -p "$${ROOT}/etc/softethervpn"
 chmod 0700 "$${ROOT}/etc/softethervpn"
+mkdir -p "$${ROOT}/etc/rc.d"
+ln -sf ../init.d/softethervpn "$${ROOT}/etc/rc.d/K10softethervpn"
 
 if [ -z "$${IPKG_INSTROOT}" ]; then
 	# Only one init script may own vpnserver.

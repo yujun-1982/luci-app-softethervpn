@@ -1,181 +1,157 @@
 'use strict';
 'require view';
+'require rpc';
 'require poll';
 'require ui';
-'require softethervpn.common as se';
+
+var callStatus = rpc.declare({
+	object: 'luci.softethervpn',
+	method: 'status',
+	expect: { '': {} }
+});
+
+var callControl = rpc.declare({
+	object: 'luci.softethervpn',
+	method: 'control',
+	params: [ 'action' ],
+	expect: { '': {} }
+});
 
 return view.extend({
 	load: function() {
-		return Promise.all([
-			se.invoke(se.callStatus),
-			se.invoke(se.callListeners)
-		]);
+		return callStatus().catch(function(err) {
+			return { ok: false, error: err && err.message ? err.message : String(err) };
+		});
 	},
 
-	render: function(data) {
-		var self = this;
-		var current = {
-			running: false,
-			boot: false,
-			autosave: ''
-		};
+	render: function(initial) {
+		var current = { running: false, boot: false };
 
 		var stateBadge = E('span');
 		var stateText = E('span');
 		var pidText = E('span');
 		var uptimeText = E('span');
 		var bootBadge = E('span');
-		var passwordBadge = E('span');
-		var autosaveText = E('span');
-		var listenersBody = E('tbody');
-		var listenerInput = E('input', {
-			'class': 'cbi-input-text',
-			'type': 'text',
-			'placeholder': _('Port, e.g. 8443'),
-			'style': 'width:12em'
+		var errorBox = E('div', {
+			'class': 'alert-message error',
+			'style': 'display:none;margin-bottom:14px'
 		});
 
 		var startBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-apply',
 			'click': function() { return act('start'); }
-		}, _('Start'));
+		}, _('启动'));
 
 		var stopBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-remove',
 			'click': function() { return act('stop'); }
-		}, _('Stop'));
+		}, _('停止'));
 
 		var restartBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-action',
 			'click': function() { return act('restart'); }
-		}, _('Restart'));
-
-		var flushBtn = E('button', {
-			'class': 'btn cbi-button cbi-button-action',
-			'click': function() { return act('flush'); }
-		}, _('Save config now'));
-
-		var autosaveBtn = E('button', {
-			'class': 'btn cbi-button cbi-button-action',
-			'click': function() { return act('apply_autosave'); }
-		}, _('Apply auto-save interval'));
+		}, _('重启'));
 
 		var bootBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-action',
 			'click': function() {
 				return act(current.boot ? 'disable' : 'enable');
 			}
-		}, _('Enable at boot'));
+		}, _('设为开机自启'));
 
 		function clear(el) {
 			while (el.firstChild)
 				el.removeChild(el.firstChild);
 		}
 
-		function setBadge(el, child) {
+		function setBadge(el, text, kind) {
 			clear(el);
-			el.appendChild(child);
+			el.appendChild(E('em', { 'class': 'badge ' + (kind || '') }, text));
 		}
 
-		function drawStatus(st) {
-			if (!st || st.ok === false)
-				return;
-			current.running = !!st.running;
-			current.boot = !!st.boot;
-			current.autosave = st.autosave || '';
+		function fmtDuration(seconds) {
+			seconds = parseInt(seconds, 10);
+			if (isNaN(seconds) || seconds < 0)
+				return '—';
+			var d = Math.floor(seconds / 86400);
+			var h = Math.floor((seconds % 86400) / 3600);
+			var m = Math.floor((seconds % 3600) / 60);
+			var s = seconds % 60;
+			if (d > 0) return '%dd %dh %dm'.format(d, h, m);
+			if (h > 0) return '%dh %dm'.format(h, m);
+			if (m > 0) return '%dm %ds'.format(m, s);
+			return '%ds'.format(s);
+		}
 
-			setBadge(stateBadge, se.statusBadge(current.running));
-			stateText.textContent = current.running ? _('vpnserver is running') : _('vpnserver is stopped');
-			pidText.textContent = current.running && st.pid ? st.pid : '—';
-			uptimeText.textContent = current.running ? se.fmtDuration(st.uptime) : '—';
-			setBadge(bootBadge, current.boot
-				? se.badge(_('Enabled'), 'success')
-				: se.badge(_('Disabled'), 'warning'));
-			setBadge(passwordBadge, st.password_set
-				? se.badge(_('Stored'), 'success')
-				: se.badge(_('Not stored'), 'warning'));
-			autosaveText.textContent = current.autosave ? '%s s'.format(current.autosave) : '—';
+		function showError(msg) {
+			errorBox.textContent = msg || _('无法读取服务状态');
+			errorBox.style.display = '';
+		}
 
+		function hideError() {
+			errorBox.style.display = 'none';
+		}
+
+		function setBusy(busy) {
+			startBtn.disabled = busy;
+			stopBtn.disabled = busy;
+			restartBtn.disabled = busy;
+			bootBtn.disabled = busy;
+		}
+
+		function updateButtons() {
 			startBtn.disabled = current.running;
 			stopBtn.disabled = !current.running;
 			restartBtn.disabled = !current.running;
-			bootBtn.textContent = current.boot ? _('Disable at boot') : _('Enable at boot');
+			bootBtn.disabled = false;
 		}
 
-		function drawListeners(res) {
-			clear(listenersBody);
-			if (!res || !res.ok) {
-				listenersBody.appendChild(E('tr', {}, [
-					E('td', { 'colspan': 3 }, res && res.error ? res.error : _('Cannot read listeners'))
-				]));
+		function apply(st) {
+			if (!st || st.ok === false) {
+				showError(st && st.error ? st.error : _('无法读取服务状态'));
 				return;
 			}
 
-			var list = res.listeners || [];
-			if (!list.length) {
-				listenersBody.appendChild(E('tr', {}, [
-					E('td', { 'colspan': 3 }, _('No listeners reported (is the service running?)'))
-				]));
-				return;
-			}
+			hideError();
+			current.running = !!st.running;
+			current.boot = !!st.boot;
 
-			list.forEach(function(item) {
-				var port = item.port;
-				var isMgmt = (port == 5555);
-				var del = E('button', {
-					'class': 'btn cbi-button cbi-button-remove',
-					'title': isMgmt ? _('The management listener cannot be removed here') : '',
-					'click': function() {
-						if (isMgmt || !confirm(_('Delete listener %s?').format(port)))
-							return;
-						return se.run(se.callListenerDelete, [ port ]).then(refresh);
-					}
-				}, _('Delete'));
-				del.disabled = isMgmt;
+			setBadge(stateBadge, current.running ? _('运行中') : _('已停止'),
+				current.running ? 'success' : 'warning');
+			stateText.textContent = current.running ? _('vpnserver 正在运行') : _('vpnserver 已停止');
+			pidText.textContent = current.running && st.pid ? st.pid : '—';
+			uptimeText.textContent = current.running ? fmtDuration(st.uptime) : '—';
+			setBadge(bootBadge, current.boot ? _('已启用') : _('未启用'),
+				current.boot ? 'success' : 'warning');
 
-				listenersBody.appendChild(E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, 'TCP ' + port),
-					E('td', { 'class': 'td' }, item.status || '—'),
-					E('td', { 'class': 'td' }, isMgmt ? E('em', {}, _('management')) : del)
-				]));
-			});
-		}
-
-		function refresh() {
-			return Promise.all([
-				se.invoke(se.callStatus),
-				se.invoke(se.callListeners)
-			]).then(function(res) {
-				drawStatus(res[0]);
-				drawListeners(res[1]);
-			});
+			bootBtn.textContent = current.boot ? _('取消开机自启') : _('设为开机自启');
+			updateButtons();
 		}
 
 		function act(action) {
-			startBtn.disabled = stopBtn.disabled = restartBtn.disabled = true;
-			return se.run(se.callControl, [ action ]).then(refresh);
-		}
-
-		function addListener() {
-			var port = (listenerInput.value || '').trim();
-			if (!/^[0-9]+$/.test(port) || +port < 1 || +port > 65535) {
-				ui.addNotification(null, E('p', {}, _('Enter a port between 1 and 65535')), 'warning');
-				return;
-			}
-			return se.run(se.callListenerAdd, [ port ]).then(function(res) {
-				if (res && res.ok)
-					listenerInput.value = '';
-				return refresh();
-			});
+			setBusy(true);
+			return callControl(action).catch(function(err) {
+				return { ok: false, error: err && err.message ? err.message : String(err) };
+			}).then(function(res) {
+				if (!res || res.ok === false) {
+					var msg = res && res.error ? res.error : _('操作失败');
+					showError(msg);
+					ui.addNotification(null, E('p', {}, msg), 'error');
+				}
+				return callStatus().catch(function(err) {
+					return { ok: false, error: err && err.message ? err.message : String(err) };
+				}).then(apply);
+			}).then(updateButtons);
 		}
 
 		var container = E('div', {}, [
-			E('h2', {}, _('SoftEther VPN Server')),
+			E('h2', {}, _('SoftEther VPN 服务器')),
+			errorBox,
 
 			E('div', { 'class': 'cbi-section' }, [
 				E('table', { 'class': 'table' }, [
 					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td', 'style': 'width:30%' }, _('State')),
+						E('td', { 'class': 'td', 'style': 'width:28%' }, _('运行状态')),
 						E('td', { 'class': 'td' }, [ stateBadge, ' ', stateText ])
 					]),
 					E('tr', { 'class': 'tr' }, [
@@ -183,100 +159,43 @@ return view.extend({
 						E('td', { 'class': 'td' }, pidText)
 					]),
 					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, _('Uptime')),
+						E('td', { 'class': 'td' }, _('运行时间')),
 						E('td', { 'class': 'td' }, uptimeText)
 					]),
 					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, _('Start at boot')),
+						E('td', { 'class': 'td' }, _('开机自启')),
 						E('td', { 'class': 'td' }, bootBadge)
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, _('Management password')),
-						E('td', { 'class': 'td' }, passwordBadge)
-					]),
-					E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td' }, _('Auto-save interval')),
-						E('td', { 'class': 'td' }, autosaveText)
 					])
 				])
 			]),
 
 			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-section-node' }, [
-					E('div', { 'class': 'cbi-value' }, [
-						E('div', { 'class': 'cbi-value-field' }, [
-							startBtn, ' ', stopBtn, ' ', restartBtn, ' ', bootBtn
-						])
-					])
-				])
-			]),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('TCP listeners')),
-				E('table', { 'class': 'table' }, [
-					E('thead', {}, [
-						E('tr', { 'class': 'tr' }, [
-							E('th', { 'class': 'th' }, _('Port')),
-							E('th', { 'class': 'th' }, _('Status')),
-							E('th', { 'class': 'th' }, _('Action'))
-						])
-					]),
-					listenersBody
-				]),
 				E('div', { 'class': 'cbi-value' }, [
 					E('div', { 'class': 'cbi-value-field' }, [
-						listenerInput, ' ',
-						E('button', {
-							'class': 'btn cbi-button cbi-button-add',
-							'click': addListener
-						}, _('Add listener'))
+						startBtn, ' ', stopBtn, ' ', restartBtn, ' ', bootBtn
 					])
-				])
-			]),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Maintenance')),
-				E('div', { 'class': 'cbi-value' }, [
-					E('div', { 'class': 'cbi-value-field' }, [
-						flushBtn, ' ', autosaveBtn
-					])
-				]),
-				E('p', { 'class': 'cbi-section-descr' }, [
-					_('SoftEther keeps HUB, user and listener changes in memory until they are flushed or the auto-save interval expires. Use "Save config now" after a batch of changes.'),
-					E('br'),
-					_('The management password is stored only on this device in /etc/softethervpn/management.password (mode 0600). It is used by vpncmd and is never sent to the browser.')
 				])
 			]),
 
 			E('div', { 'class': 'alert-message' }, E('p', {}, [
-				E('strong', {}, _('Notes')),
+				_('用 SoftEther VPN Server Manager 修改 HUB、用户或监听端口后，请点“重启”，或在正常重启路由器前等待几秒；停止服务时会把内存中的配置写入磁盘。'),
 				E('br'),
-				_('The management listener TCP 5555 is not opened by the default firewall rules. Keep it on the LAN side.'),
-				E('br'),
-				_('SoftEther\'s default TCP 443 listener conflicts with LuCI/uhttpd HTTPS. Change one of them if HTTPS is enabled.'),
-				E('br'),
-				_('Config file:'),
+				_('配置文件：'),
 				' ',
 				E('code', {}, '/usr/libexec/softethervpn/vpn_server.config')
 			]))
 		]);
 
-		drawStatus(data[0]);
-		drawListeners(data[1]);
-
-		if (!data[0] || data[0].ok === false)
-			ui.addNotification(null, E('p', {}, data[0] && data[0].error ? data[0].error : _('Cannot read service status')), 'error');
+		apply(initial);
+		updateButtons();
 
 		poll.add(function() {
-			var wasRunning = current.running;
-			return se.invoke(se.callStatus).then(function(st) {
-				if (!st || st.ok === false)
-					return;
-				drawStatus(st);
-				if (wasRunning !== !!st.running)
-					return refresh();
-			});
-		}, 10);
+			if (startBtn.disabled && stopBtn.disabled && restartBtn.disabled && bootBtn.disabled)
+				return;
+			return callStatus().catch(function(err) {
+				return { ok: false, error: err && err.message ? err.message : String(err) };
+			}).then(apply);
+		}, 5);
 
 		return container;
 	},

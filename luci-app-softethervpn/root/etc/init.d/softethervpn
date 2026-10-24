@@ -16,6 +16,28 @@ EXTRA_HELP="	flush	Save the running configuration to disk
 . /lib/functions.sh
 . /usr/libexec/softethervpn/common.sh
 
+ensure_shutdown_link() {
+	mkdir -p /etc/rc.d
+	ln -sf ../init.d/softethervpn "/etc/rc.d/K${STOP}softethervpn"
+}
+
+enable() {
+	ln -sf ../init.d/softethervpn "/etc/rc.d/S${START}softethervpn"
+	ensure_shutdown_link
+}
+
+disable() {
+	rm -f "/etc/rc.d/S${START}softethervpn"
+	# Keep the shutdown link: a manually started server must still flush its
+	# in-memory configuration when the router reboots.
+	ensure_shutdown_link
+}
+
+enabled() {
+	[ -L "/etc/rc.d/S${START}softethervpn" ]
+}
+
+
 VPN_BIN="${VPN_BIN:-$VPN_STORE/vpnserver}"
 VPN_INIT="/etc/init.d/softethervpn"
 
@@ -105,6 +127,7 @@ start() {
 	fi
 
 	ensure_dirs
+	ensure_shutdown_link
 	apply_lang
 	[ -s "$VPN_CONF" ] || : > "$VPN_CONF"
 	apply_firewall 1
@@ -160,6 +183,8 @@ stop() {
 			kill -9 $(pidof vpnserver) 2>/dev/null
 		fi
 	fi
+
+	sync
 
 	apply_firewall 0
 	return 0

@@ -1,36 +1,19 @@
 {
 	"luci-app-softethervpn": {
-		"description": "LuCI SoftEther VPN Server control",
+		"description": "LuCI SoftEther VPN Server service control",
 		"read": {
 			"ubus": {
 				"luci.softethervpn": [
-					"status",
-					"listeners",
-					"hubs",
-					"users",
-					"logs"
+					"status"
 				]
-			},
-			"uci": [ "softethervpn" ]
+			}
 		},
 		"write": {
 			"ubus": {
 				"luci.softethervpn": [
-					"control",
-					"save_password",
-					"clear_password",
-					"hub_add",
-					"hub_delete",
-					"hub_securenat",
-					"user_add",
-					"user_delete",
-					"user_password",
-					"listener_add",
-					"listener_delete",
-					"log_clear"
+					"control"
 				]
-			},
-			"uci": [ "softethervpn" ]
+			}
 		}
 	}
 }

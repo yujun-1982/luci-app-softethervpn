@@ -10,6 +10,11 @@
 mkdir -p /etc/softethervpn
 chmod 0700 /etc/softethervpn
 
+# Keep a shutdown link even when autostart is disabled: if the service was
+# started manually, a normal reboot must still stop it and flush the config.
+mkdir -p /etc/rc.d
+ln -sf ../init.d/softethervpn /etc/rc.d/K10softethervpn
+
 # vpn_server.config lives outside /etc, so sysupgrade needs an explicit entry.
 for path in /usr/libexec/softethervpn/vpn_server.config; do
 	[ -f /etc/sysupgrade.conf ] || : > /etc/sysupgrade.conf
