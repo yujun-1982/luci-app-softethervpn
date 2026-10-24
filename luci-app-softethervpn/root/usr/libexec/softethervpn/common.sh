@@ -28,11 +28,13 @@ vpn_is_running() {
 # Authentication is read from a root-only file; the password never appears in
 # a LuCI request or in the process list of the web server.
 vpn_exec() {
+	local t=25
+	[ -s "$VPN_PWFILE" ] || t=5
 	if [ -s "$VPN_PWFILE" ]; then
-		timeout 25 env LANG=en_US.UTF-8 "$VPNCMD_BIN" "$VPN_SERVER" /SERVER \
+		timeout "$t" env LANG=en_US.UTF-8 "$VPNCMD_BIN" "$VPN_SERVER" /SERVER \
 			"/PASSWORD:$(head -n 1 "$VPN_PWFILE" | tr -d '\r')" "$@" </dev/null 2>&1
 	else
-		timeout 25 env LANG=en_US.UTF-8 "$VPNCMD_BIN" "$VPN_SERVER" /SERVER "$@" </dev/null 2>&1
+		timeout "$t" env LANG=en_US.UTF-8 "$VPNCMD_BIN" "$VPN_SERVER" /SERVER "$@" </dev/null 2>&1
 	fi
 }
 
@@ -45,6 +47,12 @@ vpn_first_error() {
 
 vpn_error_text() {
 	local e
+	case "$1" in
+		*"Password:"*|*"Access has been denied"*|*"password is incorrect"*)
+			echo "Server management password is not stored or is incorrect. Open Settings -> Management credentials and save the current password."
+			return
+			;;
+	esac
 	e=$(vpn_first_error "$1")
 	[ -n "$e" ] || e="vpncmd failed (exit $2)"
 	printf '%s' "$e"
@@ -164,10 +172,11 @@ vpn_flush() {
 # trip.  Editing vpn_server.config in place is not safe: the file carries
 # hash fields that ConfigSet validates.
 vpn_set_autosave() {
-	local seconds="$1" tmp out result rc have cfgout
+	local seconds="$1" tmp out result rc have cfgout t=25
 	case "$seconds" in
 		''|*[!0-9]*) echo "invalid interval: $seconds"; return 1 ;;
 	esac
+	[ -s "$VPN_PWFILE" ] || t=5
 	vpn_is_running || { echo "vpnserver is not running"; return 1; }
 
 	tmp=$(mktemp /tmp/softethervpn-autosave.XXXXXX) || return 1
@@ -184,10 +193,10 @@ vpn_set_autosave() {
 	sed -i "s/AutoSaveConfigSpan [0-9][0-9]*/AutoSaveConfigSpan $seconds/" "$tmp"
 
 	if [ -s "$VPN_PWFILE" ]; then
-		printf '%s\n' "$tmp" | timeout 20 env LANG=en_US.UTF-8 "$VPNCMD_BIN" "$VPN_SERVER" /SERVER \
+		printf '%s\n' "$tmp" | timeout "$t" env LANG=en_US.UTF-8 "$VPNCMD_BIN" "$VPN_SERVER" /SERVER \
 			"/PASSWORD:$(head -n 1 "$VPN_PWFILE" | tr -d '\r')" /CMD ConfigSet > "$cfgout" 2>&1
 	else
-		printf '%s\n' "$tmp" | timeout 20 env LANG=en_US.UTF-8 "$VPNCMD_BIN" "$VPN_SERVER" /SERVER \
+		printf '%s\n' "$tmp" | timeout "$t" env LANG=en_US.UTF-8 "$VPNCMD_BIN" "$VPN_SERVER" /SERVER \
 			/CMD ConfigSet > "$cfgout" 2>&1
 	fi
 	rc=$?
