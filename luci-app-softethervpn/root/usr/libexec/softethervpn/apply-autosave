@@ -1,0 +1,15 @@
+#!/bin/sh
+# Apply AutoSaveConfigSpan to a running server.  Called by the init script in
+# the background and by the LuCI "apply now" button.
+
+. /usr/libexec/softethervpn/common.sh
+
+[ -n "$1" ] || exit 1
+
+out=$(vpn_set_autosave "$1" 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+	logger -t softethervpn "auto-save apply failed: $out"
+fi
+printf '%s\n' "$out"
+exit "$rc"

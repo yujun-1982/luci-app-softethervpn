@@ -1,0 +1,379 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-softethervpn 1.0.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-24 20:00+0800\n"
+"PO-Revision-Date: 2026-10-24 20:00+0800\n"
+"Last-Translator: \n"
+"Language-Team: Chinese (Simplified)\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A password is required for password authentication"
+msgstr "密码认证需要填写密码"
+
+msgid "Action"
+msgstr "操作"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Add listener"
+msgstr "添加监听端口"
+
+msgid "Add user"
+msgstr "添加用户"
+
+msgid "Anonymous"
+msgstr "匿名"
+
+msgid "Apply"
+msgstr "应用"
+
+msgid "Apply auto-save interval"
+msgstr "应用自动保存间隔"
+
+msgid "Auth"
+msgstr "认证方式"
+
+msgid "auto-refresh every 5 seconds"
+msgstr "每 5 秒自动刷新"
+
+msgid "Auto-save interval"
+msgstr "自动保存间隔"
+
+msgid "Auto-save interval (seconds)"
+msgstr "自动保存间隔（秒）"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot read listeners"
+msgstr "无法读取监听端口"
+
+msgid "Cannot read service status"
+msgstr "无法读取服务状态"
+
+msgid "Cannot read logs"
+msgstr "无法读取日志"
+
+msgid "Cannot read users"
+msgstr "无法读取用户"
+
+msgid "Cannot read virtual HUBs"
+msgstr "无法读取虚拟 HUB"
+
+msgid "Clear"
+msgstr "清空"
+
+msgid "Clear stored password"
+msgstr "清除已保存密码"
+
+msgid "Clear the current log file?"
+msgstr "清空当前日志文件？"
+
+msgid "Config file:"
+msgstr "配置文件："
+
+msgid "Create a HUB"
+msgstr "创建 HUB"
+
+msgid "Create and maintain ACCEPT rules in the WAN zone for the TCP and UDP ports below. Rules are enabled while the service is running."
+msgstr "为下方 TCP/UDP 端口在 WAN 区域创建并维护 ACCEPT 规则；服务运行时规则启用。"
+
+msgid "Create HUB"
+msgstr "创建 HUB"
+
+msgid "Current SoftEther server management password"
+msgstr "当前 SoftEther 服务端管理密码"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete HUB \"%s\" and all of its users?"
+msgstr "删除 HUB“%s”及其所有用户？"
+
+msgid "Delete listener %s?"
+msgstr "删除监听端口 %s？"
+
+msgid "Delete user \"%s\"?"
+msgstr "删除用户“%s”？"
+
+msgid "Disable at boot"
+msgstr "取消开机自启"
+
+msgid "Disabled"
+msgstr "已禁用"
+
+msgid "Enable at boot"
+msgstr "设为开机自启"
+
+msgid "Enabled"
+msgstr "已启用"
+
+msgid "Enter a number between 0 and 604800"
+msgstr "请输入 0 到 604800 之间的数字"
+
+msgid "Enter a port between 1 and 65535"
+msgstr "请输入 1 到 65535 之间的端口"
+
+msgid "File:"
+msgstr "文件："
+
+msgid "Firewall rules and the server language are applied by the init script on start or restart."
+msgstr "防火墙规则和服务端语言在启动或重启时由 init 脚本应用。"
+
+msgid "Full name"
+msgstr "全名"
+
+msgid "HUB"
+msgstr "HUB"
+
+msgid "HUB admin password (optional)"
+msgstr "HUB 管理密码（可选）"
+
+msgid "HUB names may contain A-Z, a-z, 0-9, _ . - and be at most 32 characters"
+msgstr "HUB 名称只能包含 A-Z、a-z、0-9、_ . -，且不超过 32 个字符"
+
+msgid "Language used by vpncmd and the server log. A restart is required."
+msgstr "vpncmd 和服务端日志使用的语言，重启后生效。"
+
+msgid "Last login"
+msgstr "最后登录"
+
+msgid "Logins"
+msgstr "登录次数"
+
+msgid "Loading..."
+msgstr "加载中..."
+
+msgid "Maintenance"
+msgstr "维护"
+
+msgid "Manage firewall rules"
+msgstr "管理防火墙规则"
+
+msgid "management"
+msgstr "管理"
+
+msgid "Management credentials"
+msgstr "管理凭据"
+
+msgid "Management password"
+msgstr "管理密码"
+
+msgid "NAT off"
+msgstr "关闭 NAT"
+
+msgid "NAT on"
+msgstr "开启 NAT"
+
+msgid "New HUB name"
+msgstr "新 HUB 名称"
+
+msgid "New password"
+msgstr "新密码"
+
+msgid "No listeners reported (is the service running?)"
+msgstr "没有监听端口（服务是否已启动？）"
+
+msgid "No log entries found."
+msgstr "没有找到日志。"
+
+msgid "No users in this HUB."
+msgstr "此 HUB 中没有用户。"
+
+msgid "No virtual HUBs found. Create one below."
+msgstr "没有找到虚拟 HUB，请在下方创建。"
+
+msgid "Not stored"
+msgstr "未保存"
+
+msgid "Note (optional)"
+msgstr "备注（可选）"
+
+msgid "Notes"
+msgstr "注意"
+
+msgid "Password"
+msgstr "密码"
+
+msgid "Password must not be empty"
+msgstr "密码不能为空"
+
+msgid "PID"
+msgstr "PID"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "Port, e.g. 8443"
+msgstr "端口，例如 8443"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Remove the stored management password?"
+msgstr "删除已保存的管理密码？"
+
+msgid "Restart"
+msgstr "重启"
+
+msgid "Restart service now"
+msgstr "立即重启服务"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save config now"
+msgstr "立即保存配置"
+
+msgid "Select \"Users\" on a HUB to list, create and delete its VPN users."
+msgstr "点击 HUB 的“用户”可查看、创建和删除 VPN 用户。"
+
+msgid "Server language"
+msgstr "服务端语言"
+
+msgid "Server log"
+msgstr "服务端日志"
+
+msgid "Service"
+msgstr "服务"
+
+msgid "Service, firewall and SoftEther runtime settings. Changes are stored in UCI; restart the service to apply firewall, language and auto-save changes."
+msgstr "服务、防火墙和 SoftEther 运行设置。更改保存在 UCI 中；重启服务后应用防火墙、语言和自动保存更改。"
+
+msgid "Sessions"
+msgstr "会话"
+
+msgid "Set password for %s"
+msgstr "设置 %s 的密码"
+
+msgid "SoftEther keeps HUB, user and listener changes in memory until they are flushed or the auto-save interval expires. Use \"Save config now\" after a batch of changes."
+msgstr "SoftEther 会把 HUB、用户和监听端口的更改保留在内存中，直到执行保存或自动保存间隔到期。批量修改后请点击“立即保存配置”。"
+
+msgid "SoftEther VPN Server"
+msgstr "SoftEther VPN 服务器"
+
+msgid "SoftEther writes its configuration to disk after this many seconds. 0 leaves the server value untouched. The server may clamp the value to its own minimum (often 300)."
+msgstr "SoftEther 每隔这么多秒把配置写入磁盘。0 表示不修改服务端当前值。服务端可能把值限制为自身最小值（通常为 300）。"
+
+msgid "SoftEther's default TCP 443 listener conflicts with LuCI/uhttpd HTTPS. Change one of them if HTTPS is enabled."
+msgstr "SoftEther 默认的 TCP 443 监听端口会与 LuCI/uhttpd 的 HTTPS 冲突；若启用了 HTTPS，请修改其中之一。"
+
+msgid "Space-separated list for L2TP/IPsec and OpenVPN UDP. The default is 500 4500 1701 1194."
+msgstr "空格分隔的端口列表，用于 L2TP/IPsec 和 OpenVPN UDP，默认 500 4500 1701 1194。"
+
+msgid "Space-separated list. The default is 443 992 1194. TCP 5555 is the management listener and is intentionally not opened."
+msgstr "空格分隔的端口列表，默认 443 992 1194。TCP 5555 是管理监听端口，默认不开放。"
+
+msgid "Start"
+msgstr "启动"
+
+msgid "Start at boot"
+msgstr "开机自启"
+
+msgid "State"
+msgstr "状态"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Stop"
+msgstr "停止"
+
+msgid "Stopped"
+msgstr "已停止"
+
+msgid "Store management password"
+msgstr "保存管理密码"
+
+msgid "Store password"
+msgstr "保存密码"
+
+msgid "Stored"
+msgstr "已保存"
+
+msgid "Stored password"
+msgstr "已保存密码"
+
+msgid "TCP listeners"
+msgstr "TCP 监听端口"
+
+msgid "TCP ports to open"
+msgstr "开放的 TCP 端口"
+
+msgid "The management listener cannot be removed here"
+msgstr "管理监听端口不能在这里删除"
+
+msgid "The management listener TCP 5555 is not opened by the default firewall rules. Keep it on the LAN side."
+msgstr "默认防火墙规则不开放管理监听端口 TCP 5555，请仅保留在 LAN 侧。"
+
+msgid "The management password is stored only on this device in /etc/softethervpn/management.password (mode 0600). It is used by vpncmd and is never sent to the browser."
+msgstr "管理密码仅保存在本设备的 /etc/softethervpn/management.password（权限 0600），供 vpncmd 使用，绝不会发送到浏览器。"
+
+msgid "This changes the VPN user password on the server."
+msgstr "这会修改服务端上的 VPN 用户密码。"
+
+msgid "This only stores the password locally for vpncmd. It does not change the password on the SoftEther server. Use the SoftEther VPN Server Manager or vpncmd ServerPasswordSet to change it."
+msgstr "这里只把密码保存在本地供 vpncmd 使用，不会修改 SoftEther 服务端密码。请使用 SoftEther VPN Server Manager 或 vpncmd 的 ServerPasswordSet 修改服务端密码。"
+
+msgid "UDP ports to open"
+msgstr "开放的 UDP 端口"
+
+msgid "Unknown error"
+msgstr "未知错误"
+
+msgid "Uptime"
+msgstr "运行时间"
+
+msgid "Use space-separated ports between 1 and 65535"
+msgstr "请使用 1 到 65535 之间的空格分隔端口"
+
+msgid "User"
+msgstr "用户"
+
+msgid "User changes are written to the running server immediately and flushed to disk."
+msgstr "用户更改会立即写入运行中的服务端并保存到磁盘。"
+
+msgid "User name"
+msgstr "用户名"
+
+msgid "User names may contain A-Z, a-z, 0-9, _ . - and be at most 32 characters"
+msgstr "用户名只能包含 A-Z、a-z、0-9、_ . -，且不超过 32 个字符"
+
+msgid "Users"
+msgstr "用户"
+
+msgid "Users in %s"
+msgstr "%s 中的用户"
+
+msgid "Virtual HUBs"
+msgstr "虚拟 HUB"
+
+msgid "Overview"
+msgstr "概览"
+
+msgid "Settings"
+msgstr "设置"
+
+msgid "Logs"
+msgstr "日志"
+
+msgid "SoftEther VPN"
+msgstr "SoftEther VPN"
+
+msgid "VPN"
+msgstr "VPN"
+
+msgid "vpnserver is running"
+msgstr "vpnserver 正在运行"
+
+msgid "vpnserver is stopped"
+msgstr "vpnserver 已停止"

@@ -1,0 +1,190 @@
+#!/bin/sh /etc/rc.common
+# LuCI-managed SoftEther VPN Server service.
+#
+# This script deliberately does not use procd.  vpnserver's daemon mode is the
+# mode that writes server_log/vpn_YYYYMMDD.log, and procd cannot supervise a
+# process that daemonizes.  The stock softethervpnserver init script is
+# disabled by this package's postinst so the two scripts never fight.
+
+START=90
+STOP=10
+
+EXTRA_COMMANDS="flush status"
+EXTRA_HELP="	flush	Save the running configuration to disk
+	status	Print running/stopped"
+
+. /lib/functions.sh
+. /usr/libexec/softethervpn/common.sh
+
+VPN_BIN="${VPN_BIN:-$VPN_STORE/vpnserver}"
+VPN_INIT="/etc/init.d/softethervpn"
+
+load_config() {
+	config_load softethervpn
+	config_get_bool manage_firewall server manage_firewall 1
+	config_get tcp_ports server tcp_ports "443 992 1194"
+	config_get udp_ports server udp_ports "500 4500 1701 1194"
+	config_get autosave server autosave 300
+	config_get lang server lang en
+
+	[ -n "$autosave" ] || autosave=300
+	case "$autosave" in
+		''|*[!0-9]*) autosave=0 ;;
+	esac
+}
+
+ensure_dirs() {
+	mkdir -p /tmp/softethervpn "$VPN_LOG_DIR" /etc/softethervpn
+	chmod 0700 /etc/softethervpn
+
+	# Keep SoftEther's daily logs on tmpfs instead of the overlay.  A real
+	# directory left by an older install is preserved.
+	if [ ! -e "$VPN_STORE/server_log" ] && [ ! -L "$VPN_STORE/server_log" ]; then
+		ln -s "$VPN_LOG_DIR" "$VPN_STORE/server_log" 2>/dev/null
+	fi
+}
+
+apply_lang() {
+	case "$lang" in
+		en|cn|tw|ja)
+			printf '%s\n' "$lang" > "$VPN_STORE/lang.config"
+			;;
+	esac
+}
+
+set_firewall_rule() {
+	local proto="$1" ports="$2" enable="$3" section="softether_$1"
+
+	[ -n "$ports" ] || return 0
+	if ! uci -q get "firewall.$section" >/dev/null 2>&1; then
+		uci set "firewall.$section=rule"
+		uci set "firewall.$section.name=SoftEther $proto"
+		uci set "firewall.$section.src=wan"
+		uci set "firewall.$section.proto=$proto"
+		uci set "firewall.$section.family=any"
+		uci set "firewall.$section.target=ACCEPT"
+	fi
+	uci set "firewall.$section.dest_port=$ports"
+	uci set "firewall.$section.enabled=$enable"
+}
+
+apply_firewall() {
+	local enable="$1" changed=0 section
+
+	if [ "$manage_firewall" != "1" ]; then
+		for section in softether_tcp softether_udp; do
+			if uci -q get "firewall.$section" >/dev/null 2>&1; then
+				uci -q delete "firewall.$section"
+				changed=1
+			fi
+		done
+		if [ "$changed" -eq 1 ]; then
+			uci commit firewall
+			/etc/init.d/firewall reload >/dev/null 2>&1
+		fi
+		return 0
+	fi
+
+	set_firewall_rule tcp "$tcp_ports" "$enable"
+	set_firewall_rule udp "$udp_ports" "$enable"
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+}
+
+start() {
+	load_config
+
+	[ -x "$VPN_BIN" ] || {
+		logger -t softethervpn "vpnserver not found at $VPN_BIN"
+		return 1
+	}
+
+	if vpn_is_running; then
+		logger -t softethervpn "vpnserver is already running"
+		return 0
+	fi
+
+	ensure_dirs
+	apply_lang
+	[ -s "$VPN_CONF" ] || : > "$VPN_CONF"
+	apply_firewall 1
+
+	logger -t softethervpn "starting vpnserver"
+	cd "$VPN_STORE" || return 1
+	local rc
+	LANG=en_US.UTF-8 "$VPN_BIN" start
+	rc=$?
+	sleep 2
+
+	if ! vpn_is_running; then
+		logger -t softethervpn "vpnserver failed to start"
+		return 1
+	fi
+
+	# Apply the configured auto-save interval after the server has opened its
+	# management listener.  The helper authenticates with the stored password.
+	if [ "$autosave" -gt 0 ] && ! grep -q "AutoSaveConfigSpan $autosave" "$VPN_CONF" 2>/dev/null; then
+		(
+			i=0
+			while [ "$i" -lt 4 ]; do
+				sleep 5
+				/usr/libexec/softethervpn/apply-autosave "$autosave" && break
+				i=$((i + 1))
+			done
+		) >/dev/null 2>&1 &
+	fi
+
+	return "$rc"
+}
+
+stop() {
+	load_config
+
+	logger -t softethervpn "stopping vpnserver"
+
+	# Flush first so a password-protected server has one more chance to write
+	# its in-memory config.  vpnserver stop also saves on a graceful shutdown,
+	# so a refusal here is not fatal.
+	vpn_flush >/dev/null 2>&1
+
+	if vpn_is_running; then
+		cd "$VPN_STORE" 2>/dev/null
+		LANG=en_US.UTF-8 "$VPN_BIN" stop >/dev/null 2>&1
+		local i=0
+		while vpn_is_running && [ "$i" -lt 10 ]; do
+			sleep 1
+			i=$((i + 1))
+		done
+		if vpn_is_running; then
+			logger -t softethervpn "vpnserver did not stop; killing it"
+			kill -9 $(pidof vpnserver) 2>/dev/null
+		fi
+	fi
+
+	apply_firewall 0
+	return 0
+}
+
+restart() {
+	stop
+	sleep 1
+	start
+}
+
+reload() {
+	restart
+}
+
+flush() {
+	load_config
+	vpn_flush
+}
+
+status() {
+	if vpn_is_running; then
+		echo "running"
+		return 0
+	fi
+	echo "stopped"
+	return 1
+}

@@ -1,0 +1,70 @@
+{
+	"admin/vpn": {
+		"title": "VPN",
+		"order": 45,
+		"action": {
+			"type": "firstchild",
+			"recurse": true
+		}
+	},
+
+	"admin/vpn/softethervpn": {
+		"title": "SoftEther VPN",
+		"order": 30,
+		"action": {
+			"type": "firstchild",
+			"recurse": true
+		},
+		"depends": {
+			"acl": [ "luci-app-softethervpn" ]
+		}
+	},
+
+	"admin/vpn/softethervpn/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "softethervpn/overview"
+		},
+		"depends": {
+			"acl": [ "luci-app-softethervpn" ]
+		}
+	},
+
+	"admin/vpn/softethervpn/hubs": {
+		"title": "Virtual Hubs",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "softethervpn/hubs"
+		},
+		"depends": {
+			"acl": [ "luci-app-softethervpn" ]
+		}
+	},
+
+	"admin/vpn/softethervpn/settings": {
+		"title": "Settings",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "softethervpn/settings"
+		},
+		"depends": {
+			"acl": [ "luci-app-softethervpn" ]
+		}
+	},
+
+	"admin/vpn/softethervpn/logs": {
+		"title": "Logs",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "softethervpn/logs"
+		},
+		"depends": {
+			"acl": [ "luci-app-softethervpn" ]
+		}
+	}
+}

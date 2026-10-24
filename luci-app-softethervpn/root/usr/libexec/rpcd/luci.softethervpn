@@ -1,0 +1,661 @@
+#!/bin/sh
+# rpcd backend for luci-app-softethervpn.
+#
+# rpcd executes this file as:
+#   luci.softethervpn list
+#   luci.softethervpn call <method>      (JSON request on stdin)
+# and expects one JSON object on stdout.  All mutations go through vpncmd.
+
+. /usr/share/libubox/jshn.sh
+. /usr/libexec/softethervpn/common.sh
+
+reply_ok() {
+	json_init
+	json_add_boolean ok 1
+	[ -n "$1" ] && json_add_string message "$1"
+	json_dump
+}
+
+reply_err() {
+	json_init
+	json_add_boolean ok 0
+	json_add_string error "$1"
+	json_dump
+}
+
+vpn_uptime() {
+	local pid="$1" btime start hz now
+	[ -r "/proc/$pid/stat" ] || { echo 0; return; }
+	btime=$(awk '/^btime/ { print $2; exit }' /proc/stat)
+	start=$(awk '{ print $22 }' "/proc/$pid/stat" 2>/dev/null)
+	hz=$(getconf CLK_TCK 2>/dev/null || echo 100)
+	now=$(date +%s)
+	case "$btime" in ''|*[!0-9]*) echo 0; return ;; esac
+	case "$start" in ''|*[!0-9]*) echo 0; return ;; esac
+	case "$hz" in ''|*[!0-9]*) hz=100 ;; esac
+	echo $((now - btime - start / hz))
+}
+
+do_status() {
+	local pid="" running=0 boot=0 uptime=0 autosave="" pw=0
+	pid=$(pidof vpnserver 2>/dev/null | awk '{ print $1 }')
+	[ -n "$pid" ] && running=1
+	if [ -x /etc/init.d/softethervpn ] && /etc/init.d/softethervpn enabled >/dev/null 2>&1; then
+		boot=1
+	fi
+	[ -n "$pid" ] && uptime=$(vpn_uptime "$pid")
+	autosave=$(vpn_read_autosave 2>/dev/null)
+	[ -s "$VPN_PWFILE" ] && pw=1
+
+	json_init
+	json_add_boolean ok 1
+	json_add_boolean running "$running"
+	json_add_string pid "$pid"
+	json_add_int uptime "${uptime:-0}"
+	json_add_boolean boot "$boot"
+	json_add_string autosave "${autosave:-}"
+	json_add_boolean password_set "$pw"
+	json_add_string config "$VPN_CONF"
+	json_add_string logdir "$VPN_LOG_DIR"
+	json_dump
+}
+
+do_listeners() {
+	local tmp out rc port status
+
+	if ! vpn_is_running; then
+		json_init
+		json_add_boolean ok 1
+		json_add_array listeners
+		json_close_array
+		json_dump
+		return
+	fi
+
+	tmp=$(mktemp /tmp/softethervpn-listeners.XXXXXX) || { reply_err "cannot create temporary file"; return; }
+	out=$(vpn_exec /CMD ListenerList)
+	rc=$?
+	printf '%s\n' "$out" | tr -d '\r' | awk -F '|' '
+		$1 ~ /TCP[ \t]+[0-9]+/ {
+			p = $1
+			sub(/^.*TCP[ \t]+/, "", p)
+			sub(/[^0-9].*$/, "", p)
+			s = $2
+			gsub(/^[ \t]+|[ \t]+$/, "", s)
+			print p "\t" s
+		}
+	' > "$tmp"
+
+	json_init
+	if [ "$rc" -ne 0 ]; then
+		json_add_boolean ok 0
+		json_add_string error "$(vpn_error_text "$out" "$rc")"
+		json_dump
+		rm -f "$tmp"
+		return
+	fi
+
+	json_add_boolean ok 1
+	json_add_array listeners
+	while IFS="$TAB" read -r port status; do
+		[ -n "$port" ] || continue
+		json_add_object
+		json_add_string port "$port"
+		json_add_string status "$status"
+		json_close_object
+	done < "$tmp"
+	json_close_array
+	json_dump
+	rm -f "$tmp"
+}
+
+do_hubs() {
+	local tmp out rc name status type users groups sessions
+
+	tmp=$(mktemp /tmp/softethervpn-hubs.XXXXXX) || { reply_err "cannot create temporary file"; return; }
+	out=$(vpn_exec /CSV /CMD HubList)
+	rc=$?
+	printf '%s\n' "$out" | tr -d '\r' | vpn_csv_to_tsv | \
+		awk -F "$TAB" '
+			NF >= 6 && $4 ~ /^[0-9]+$/ && $5 ~ /^[0-9]+$/ && $6 ~ /^[0-9]+$/ {
+				print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6
+			}
+		' > "$tmp"
+
+	json_init
+	if [ "$rc" -ne 0 ]; then
+		json_add_boolean ok 0
+		json_add_string error "$(vpn_error_text "$out" "$rc")"
+		json_dump
+		rm -f "$tmp"
+		return
+	fi
+
+	json_add_boolean ok 1
+	json_add_array hubs
+	while IFS="$TAB" read -r name status type users groups sessions; do
+		[ -n "$name" ] || continue
+		json_add_object
+		json_add_string name "$name"
+		json_add_string status "$status"
+		json_add_string type "$type"
+		json_add_int users "${users:-0}"
+		json_add_int groups "${groups:-0}"
+		json_add_int sessions "${sessions:-0}"
+		json_close_object
+	done < "$tmp"
+	json_close_array
+	json_dump
+	rm -f "$tmp"
+}
+
+do_users() {
+	local hub="$1" tmp out rc name full group note auth logins last expires
+
+	if ! vpn_is_running; then
+		reply_err "vpnserver is not running"
+		return
+	fi
+	case "$hub" in
+		''|*/*) reply_err "invalid hub name"; return ;;
+	esac
+
+	tmp=$(mktemp /tmp/softethervpn-users.XXXXXX) || { reply_err "cannot create temporary file"; return; }
+	out=$(vpn_exec /CSV "/HUB:$hub" /CMD UserList)
+	rc=$?
+	printf '%s\n' "$out" | tr -d '\r' | vpn_csv_to_tsv | \
+		awk -F "$TAB" '
+			NF >= 8 && $6 ~ /^[0-9]+$/ {
+				print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 "\t" $7 "\t" $8
+			}
+		' > "$tmp"
+
+	json_init
+	if [ "$rc" -ne 0 ]; then
+		json_add_boolean ok 0
+		json_add_string error "$(vpn_error_text "$out" "$rc")"
+		json_dump
+		rm -f "$tmp"
+		return
+	fi
+
+	json_add_boolean ok 1
+	json_add_array users
+	while IFS="$TAB" read -r name full group note auth logins last expires; do
+		[ -n "$name" ] || continue
+		json_add_object
+		json_add_string name "$name"
+		json_add_string full "$full"
+		json_add_string group "$group"
+		json_add_string note "$note"
+		json_add_string auth "$auth"
+		json_add_string logins "$logins"
+		json_add_string last "$last"
+		json_add_string expires "$expires"
+		json_close_object
+	done < "$tmp"
+	json_close_array
+	json_dump
+	rm -f "$tmp"
+}
+
+do_control() {
+	local action="$1" out="" rc=0 running=0 i autosave
+
+	case "$action" in
+		start|stop|restart|enable|disable|flush|apply_autosave) ;;
+		*) reply_err "invalid action"; return ;;
+	esac
+
+	case "$action" in
+		start)
+			out=$(/etc/init.d/softethervpn start 2>&1)
+			rc=$?
+			i=0
+			while [ "$i" -lt 10 ]; do
+				vpn_is_running && break
+				sleep 1
+				i=$((i + 1))
+			done
+			;;
+		stop)
+			out=$(/etc/init.d/softethervpn stop 2>&1)
+			rc=$?
+			;;
+		restart)
+			out=$(/etc/init.d/softethervpn restart 2>&1)
+			rc=$?
+			i=0
+			while [ "$i" -lt 6 ]; do
+				vpn_is_running && break
+				sleep 1
+				i=$((i + 1))
+			done
+			;;
+		enable|disable)
+			out=$(/etc/init.d/softethervpn "$action" 2>&1)
+			rc=$?
+			;;
+		flush)
+			out=$(vpn_flush 2>&1)
+			rc=$?
+			;;
+		apply_autosave)
+			autosave=$(uci -q get softethervpn.server.autosave)
+			[ -n "$autosave" ] || autosave=300
+			if [ "$autosave" -le 0 ] 2>/dev/null; then
+				json_init
+				json_add_boolean ok 0
+				json_add_string error "auto-save is disabled (interval 0)"
+				json_dump
+				return
+			fi
+			out=$(vpn_set_autosave "$autosave" 2>&1)
+			rc=$?
+			;;
+	esac
+
+	vpn_is_running && running=1
+
+	json_init
+	if [ "$rc" -eq 0 ]; then
+		json_add_boolean ok 1
+		json_add_string message "$(printf '%s' "$out" | tr -d '\r' | tail -n 3 | tr '\n' ' ')"
+	else
+		json_add_boolean ok 0
+		json_add_string error "$(printf '%s' "$out" | tr -d '\r' | tail -n 4 | tr '\n' ' ')"
+	fi
+	json_add_boolean running "$running"
+	json_dump
+}
+
+do_save_password() {
+	local password="$1"
+
+	if [ -z "$password" ]; then
+		rm -f "$VPN_PWFILE"
+		reply_ok "stored password removed"
+		return
+	fi
+
+	if [ "${#password}" -gt 128 ]; then
+		reply_err "password is too long (max 128 characters)"
+		return
+	fi
+	if printf '%s' "$password" | grep -q '[[:cntrl:]]'; then
+		reply_err "password must not contain control characters or newlines"
+		return
+	fi
+
+	mkdir -p /etc/softethervpn
+	chmod 0700 /etc/softethervpn
+	if ! ( umask 077; printf '%s\n' "$password" > "$VPN_PWFILE" ); then
+		reply_err "cannot write $VPN_PWFILE"
+		return
+	fi
+	chmod 0600 "$VPN_PWFILE"
+	reply_ok "stored password saved"
+}
+
+do_hub_add() {
+	local name="$1" password="$2" out rc
+
+	vpn_validate_name "$name" || { reply_err "invalid hub name (A-Z, a-z, 0-9, _ . -; max 32)"; return; }
+	if [ -n "$password" ] && printf '%s' "$password" | grep -q '[[:cntrl:]]'; then
+		reply_err "hub password must not contain control characters"
+		return
+	fi
+
+	out=$(vpn_exec /CMD HubCreate "$name" "/PASSWORD:$password")
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "$(vpn_error_text "$out" "$rc")"
+		return
+	fi
+	vpn_flush >/dev/null 2>&1
+	reply_ok "hub $name created"
+}
+
+do_hub_delete() {
+	local name="$1" out rc
+
+	vpn_validate_name "$name" || { reply_err "invalid hub name"; return; }
+	out=$(vpn_exec /CMD HubDelete "$name")
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "$(vpn_error_text "$out" "$rc")"
+		return
+	fi
+	vpn_flush >/dev/null 2>&1
+	reply_ok "hub $name deleted"
+}
+
+do_user_add() {
+	local hub="$1" name="$2" password="$3" auth="$4" note="$5" out rc
+
+	case "$hub" in
+		''|*/*) reply_err "invalid hub name"; return ;;
+	esac
+	vpn_validate_name "$name" || { reply_err "invalid user name (A-Z, a-z, 0-9, _ . -; max 32)"; return; }
+	case "$auth" in
+		password|anonymous) ;;
+		*) reply_err "invalid authentication type"; return ;;
+	esac
+	if [ "$auth" = "password" ]; then
+		[ -n "$password" ] || { reply_err "a password is required for password authentication"; return; }
+		if printf '%s' "$password" | grep -q '[[:cntrl:]]'; then
+			reply_err "user password must not contain control characters"
+			return
+		fi
+	fi
+
+	note=$(printf '%s' "$note" | tr '\n\r\t' '   ' | tr -d '"')
+	if [ "${#note}" -gt 255 ]; then
+		reply_err "note is too long (max 255 characters)"
+		return
+	fi
+	[ -n "$note" ] || note="none"
+
+	out=$(vpn_exec "/HUB:$hub" /CMD UserCreate "$name" /GROUP:none /REALNAME:none "/NOTE:$note")
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "$(vpn_error_text "$out" "$rc")"
+		return
+	fi
+
+	if [ "$auth" = "password" ]; then
+		out=$(vpn_exec "/HUB:$hub" /CMD UserPasswordSet "$name" "/PASSWORD:$password")
+	else
+		out=$(vpn_exec "/HUB:$hub" /CMD UserAnonymousSet "$name")
+	fi
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "user created, but setting authentication failed: $(vpn_error_text "$out" "$rc")"
+		return
+	fi
+	vpn_flush >/dev/null 2>&1
+	reply_ok "user $name created"
+}
+
+do_user_delete() {
+	local hub="$1" name="$2" out rc
+
+	case "$hub" in
+		''|*/*) reply_err "invalid hub name"; return ;;
+	esac
+	vpn_validate_name "$name" || { reply_err "invalid user name"; return; }
+	out=$(vpn_exec "/HUB:$hub" /CMD UserDelete "$name")
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "$(vpn_error_text "$out" "$rc")"
+		return
+	fi
+	vpn_flush >/dev/null 2>&1
+	reply_ok "user $name deleted"
+}
+
+do_user_password() {
+	local hub="$1" name="$2" password="$3" out rc
+
+	case "$hub" in
+		''|*/*) reply_err "invalid hub name"; return ;;
+	esac
+	vpn_validate_name "$name" || { reply_err "invalid user name"; return; }
+	[ -n "$password" ] || { reply_err "password must not be empty"; return; }
+	if printf '%s' "$password" | grep -q '[[:cntrl:]]'; then
+		reply_err "password must not contain control characters"
+		return
+	fi
+	out=$(vpn_exec "/HUB:$hub" /CMD UserPasswordSet "$name" "/PASSWORD:$password")
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "$(vpn_error_text "$out" "$rc")"
+		return
+	fi
+	vpn_flush >/dev/null 2>&1
+	reply_ok "password updated"
+}
+
+do_hub_securenat() {
+	local hub="$1" enable="$2" out rc cmd
+
+	case "$hub" in
+		''|*/*) reply_err "invalid hub name"; return ;;
+	esac
+	case "$enable" in
+		1|yes|true|on) cmd="SecureNatEnable" ;;
+		0|no|false|off) cmd="SecureNatDisable" ;;
+		*) reply_err "invalid value"; return ;;
+	esac
+	out=$(vpn_exec "/HUB:$hub" /CMD "$cmd")
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "$(vpn_error_text "$out" "$rc")"
+		return
+	fi
+	vpn_flush >/dev/null 2>&1
+	if [ "$cmd" = "SecureNatEnable" ]; then
+		reply_ok "SecureNAT enabled on $hub"
+	else
+		reply_ok "SecureNAT disabled on $hub"
+	fi
+}
+
+do_listener_add() {
+	local port="$1" out rc
+
+	case "$port" in
+		''|*[!0-9]*) reply_err "invalid port"; return ;;
+	esac
+	[ "$port" -ge 1 ] 2>/dev/null && [ "$port" -le 65535 ] 2>/dev/null || {
+		reply_err "port must be 1-65535"
+		return
+	}
+	out=$(vpn_exec /CMD ListenerCreate "$port" /ENABLE:yes)
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "$(vpn_error_text "$out" "$rc")"
+		return
+	fi
+	vpn_flush >/dev/null 2>&1
+	reply_ok "listener $port created"
+}
+
+do_listener_delete() {
+	local port="$1" out rc
+
+	case "$port" in
+		''|*[!0-9]*) reply_err "invalid port"; return ;;
+	esac
+	[ "$port" -ge 1 ] 2>/dev/null && [ "$port" -le 65535 ] 2>/dev/null || {
+		reply_err "port must be 1-65535"
+		return
+	}
+	[ "$port" -eq 5555 ] && { reply_err "port 5555 is the management listener and must be kept"; return; }
+	out=$(vpn_exec /CMD ListenerDelete "$port")
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		reply_err "$(vpn_error_text "$out" "$rc")"
+		return
+	fi
+	vpn_flush >/dev/null 2>&1
+	reply_ok "listener $port deleted"
+}
+
+do_logs() {
+	local lines="$1" file text
+
+	case "$lines" in
+		''|*[!0-9]*) lines=300 ;;
+	esac
+	[ "$lines" -gt 2000 ] && lines=2000
+
+	file=$(ls -1t "$VPN_LOG_DIR"/vpn_*.log 2>/dev/null | head -n 1)
+	if [ -z "$file" ]; then
+		file=$(ls -1t "$VPN_STORE"/server_log/vpn_*.log 2>/dev/null | head -n 1)
+	fi
+	if [ -n "$file" ] && [ -f "$file" ]; then
+		text=$(tail -n "$lines" "$file" 2>/dev/null)
+	else
+		file="syslog"
+		text=$(logread 2>/dev/null | grep -iE 'vpnserver|softether' | tail -n "$lines")
+	fi
+
+	json_init
+	json_add_boolean ok 1
+	json_add_string path "$file"
+	json_add_string text "$text"
+	json_dump
+}
+
+do_clear_log() {
+	local file
+	file=$(ls -1t "$VPN_LOG_DIR"/vpn_*.log 2>/dev/null | head -n 1)
+	if [ -z "$file" ]; then
+		file=$(ls -1t "$VPN_STORE"/server_log/vpn_*.log 2>/dev/null | head -n 1)
+	fi
+	if [ -z "$file" ] || [ ! -f "$file" ]; then
+		reply_err "no log file to clear"
+		return
+	fi
+	: > "$file"
+	reply_ok "log cleared"
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object status
+		json_close_object
+		json_add_object listeners
+		json_close_object
+		json_add_object hubs
+		json_close_object
+		json_add_object users
+		json_add_string hub "string"
+		json_close_object
+		json_add_object logs
+		json_add_string lines "string"
+		json_close_object
+		json_add_object control
+		json_add_string action "string"
+		json_close_object
+		json_add_object save_password
+		json_add_string password "string"
+		json_close_object
+		json_add_object clear_password
+		json_close_object
+		json_add_object hub_add
+		json_add_string name "string"
+		json_add_string password "string"
+		json_close_object
+		json_add_object hub_delete
+		json_add_string name "string"
+		json_close_object
+		json_add_object hub_securenat
+		json_add_string hub "string"
+		json_add_string enable "string"
+		json_close_object
+		json_add_object user_add
+		json_add_string hub "string"
+		json_add_string name "string"
+		json_add_string password "string"
+		json_add_string auth "string"
+		json_add_string note "string"
+		json_close_object
+		json_add_object user_delete
+		json_add_string hub "string"
+		json_add_string name "string"
+		json_close_object
+		json_add_object user_password
+		json_add_string hub "string"
+		json_add_string name "string"
+		json_add_string password "string"
+		json_close_object
+		json_add_object listener_add
+		json_add_string port "string"
+		json_close_object
+		json_add_object listener_delete
+		json_add_string port "string"
+		json_close_object
+		json_add_object log_clear
+		json_close_object
+		json_dump
+		;;
+	call)
+		input=$(cat)
+		json_load "$input" 2>/dev/null
+		case "$2" in
+			status) do_status ;;
+			listeners) do_listeners ;;
+			hubs) do_hubs ;;
+			users)
+				json_get_var hub hub
+				do_users "$hub"
+				;;
+			logs)
+				json_get_var lines lines 300
+				do_logs "$lines"
+				;;
+			control)
+				json_get_var action action
+				do_control "$action"
+				;;
+			save_password)
+				json_get_var password password
+				do_save_password "$password"
+				;;
+			clear_password)
+				do_save_password ""
+				;;
+			hub_add)
+				json_get_var name name
+				json_get_var password password
+				do_hub_add "$name" "$password"
+				;;
+			hub_delete)
+				json_get_var name name
+				do_hub_delete "$name"
+				;;
+			hub_securenat)
+				json_get_var hub hub
+				json_get_var enable enable
+				do_hub_securenat "$hub" "$enable"
+				;;
+			user_add)
+				json_get_var hub hub
+				json_get_var name name
+				json_get_var password password
+				json_get_var auth auth
+				json_get_var note note
+				do_user_add "$hub" "$name" "$password" "$auth" "$note"
+				;;
+			user_delete)
+				json_get_var hub hub
+				json_get_var name name
+				do_user_delete "$hub" "$name"
+				;;
+			user_password)
+				json_get_var hub hub
+				json_get_var name name
+				json_get_var password password
+				do_user_password "$hub" "$name" "$password"
+				;;
+			listener_add)
+				json_get_var port port
+				do_listener_add "$port"
+				;;
+			listener_delete)
+				json_get_var port port
+				do_listener_delete "$port"
+				;;
+			log_clear) do_clear_log ;;
+			*) reply_err "unknown method: $2" ;;
+		esac
+		;;
+	*)
+		exit 1
+		;;
+esac
+
+exit 0

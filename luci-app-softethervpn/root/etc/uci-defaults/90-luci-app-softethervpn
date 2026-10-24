@@ -1,0 +1,19 @@
+#!/bin/sh
+# First-boot setup for luci-app-softethervpn.
+#
+# We ship our own /etc/init.d/softethervpn because the stock server init
+# script cannot persist config on every build.  Disable the stock script so
+# only one of them can ever start vpnserver.
+
+[ -x /etc/init.d/softethervpnserver ] && /etc/init.d/softethervpnserver disable >/dev/null 2>&1
+
+mkdir -p /etc/softethervpn
+chmod 0700 /etc/softethervpn
+
+# vpn_server.config lives outside /etc, so sysupgrade needs an explicit entry.
+for path in /usr/libexec/softethervpn/vpn_server.config; do
+	[ -f /etc/sysupgrade.conf ] || : > /etc/sysupgrade.conf
+	grep -qx "$path" /etc/sysupgrade.conf 2>/dev/null || echo "$path" >> /etc/sysupgrade.conf
+done
+
+exit 0

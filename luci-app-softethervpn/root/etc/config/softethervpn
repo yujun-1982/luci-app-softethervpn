@@ -1,0 +1,6 @@
+config softether 'server'
+	option manage_firewall '1'
+	option tcp_ports '443 992 1194'
+	option udp_ports '500 4500 1701 1194'
+	option autosave '300'
+	option lang 'en'
