@@ -19,7 +19,7 @@ SSH 到路由器执行 `vpncmd`。
 - **日志**：查看当天 `server_log`，自动刷新，支持清空。
 - **防火墙**：按配置自动创建/启用 WAN 侧 TCP/UDP ACCEPT 规则；停止服务时禁用。
 - **配置持久化**：启动时应用语言和自动保存间隔；用户/HUB 变更后立即 `Flush`。
-- **中文界面**：内置 `zh_Hans` 翻译。
+- **中文界面**：主包内置 `zh-cn` / `zh_Hans` 翻译，无需额外安装 i18n 包。
 
 ## 兼容性
 
@@ -56,6 +56,7 @@ luci-app-softethervpn/
     │   ├── init.d/softethervpn
     │   └── uci-defaults/90-luci-app-softethervpn
     └── usr/
+        ├── lib/lua/luci/i18n/*.lmo               # 内置中文翻译
         ├── libexec/rpcd/luci.softethervpn       # rpcd 后端
         ├── libexec/softethervpn/common.sh       # vpncmd 封装/解析
         ├── libexec/softethervpn/apply-autosave  # 自动保存间隔
