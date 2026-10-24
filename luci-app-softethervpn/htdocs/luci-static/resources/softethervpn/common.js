@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 'require ui';
 
@@ -178,7 +179,12 @@ function statusBadge(running) {
 		: badge(_('Stopped'), 'warning');
 }
 
-return {
+/*
+ * LuCI loads every module as a class factory.  Return a baseclass-derived
+ * class whose prototype exposes the shared RPC declarations and helpers;
+ * `require softethervpn.common as se` then yields an instance.
+ */
+return baseclass.extend({
 	callStatus: callStatus,
 	callListeners: callListeners,
 	callHubs: callHubs,
@@ -203,4 +209,4 @@ return {
 	fmtDuration: fmtDuration,
 	badge: badge,
 	statusBadge: statusBadge
-};
+});
