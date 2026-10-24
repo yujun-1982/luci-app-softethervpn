@@ -41,8 +41,9 @@ luci-app-softethervpn/
 ├── Makefile
 ├── README.md
 ├── LICENSE
+├── htdocs/luci-static/resources/softethervpn/
+│   └── common.js          # RPC 声明和公共 UI 辅助
 ├── htdocs/luci-static/resources/view/softethervpn/
-│   ├── common.js          # RPC 声明和公共 UI 辅助
 │   ├── overview.js        # 服务状态/控制/监听端口
 │   ├── hubs.js            # 虚拟 HUB 和用户
 │   ├── settings.js        # UCI 设置、管理密码

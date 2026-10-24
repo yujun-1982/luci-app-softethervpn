@@ -2,7 +2,7 @@
 'require view';
 'require poll';
 'require ui';
-'require view.softethervpn.common as se';
+'require softethervpn.common as se';
 
 return view.extend({
 	load: function() {
